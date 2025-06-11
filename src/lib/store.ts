@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Vent, VentCategory, VentDuration } from './types';
+import { Vent, VentCategory } from './types';
+
+export type VentDuration = '1h' | '6h' | '12h' | '24h' | '48h' | '1w';
 
 interface VentStore {
   vents: Vent[];
@@ -29,6 +31,8 @@ const calculateExpiryDate = (duration: VentDuration): Date => {
       return new Date(now.getTime() + 48 * 60 * 60 * 1000);
     case '1w':
       return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    default:
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000); // Default to 24h
   }
 };
 
@@ -90,4 +94,4 @@ export const useVentStore = create<VentStore>()(
       name: 'vent-storage',
     }
   )
-); 
+);

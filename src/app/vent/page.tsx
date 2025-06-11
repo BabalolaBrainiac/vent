@@ -21,29 +21,39 @@ export default function VentPage() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [showCommentInput, setShowCommentInput] = useState<Record<string, boolean>>({});
   const [likedVents, setLikedVents] = useState<Record<string, boolean>>({});
+  const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({});
+  const [commentsError, setCommentsError] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     fetchVents();
   }, [fetchVents]);
 
+  // Helper to fetch comments for a single vent
+  const fetchCommentsForVent = async (ventId: string) => {
+    setCommentsLoading((prev) => ({ ...prev, [ventId]: true }));
+    setCommentsError((prev) => ({ ...prev, [ventId]: null }));
+    try {
+      const res = await fetch(`/api/comments/${ventId}`);
+      if (res.ok) {
+        const comments = await res.json();
+        setCommentsMap((prev) => ({ ...prev, [ventId]: Array.isArray(comments) ? comments : [] }));
+      } else {
+        setCommentsError((prev) => ({ ...prev, [ventId]: 'Failed to fetch comments' }));
+      }
+    } catch (err) {
+      setCommentsError((prev) => ({ ...prev, [ventId]: 'Error fetching comments' }));
+    } finally {
+      setCommentsLoading((prev) => ({ ...prev, [ventId]: false }));
+    }
+  };
+
   useEffect(() => {
     // Fetch comments for all vents
-    const fetchComments = async () => {
-      const map: Record<string, any[]> = {};
-      await Promise.all(
-        vents.map(async (vent) => {
-          const res = await fetch(`/api/comments/${vent.id}`);
-          if (res.ok) {
-            const comments = await res.json();
-            map[vent.id] = Array.isArray(comments) ? comments : [];
-          } else {
-            map[vent.id] = [];
-          }
-        })
-      );
-      setCommentsMap(map);
-    };
-    if (vents.length > 0) fetchComments();
+    if (vents.length > 0) {
+      vents.forEach((vent) => {
+        fetchCommentsForVent(vent.id);
+      });
+    }
   }, [vents]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -284,7 +294,11 @@ export default function VentPage() {
               </div>
 
               {/* Comments Section */}
-              {commentsMap[vent.id] && commentsMap[vent.id].length > 0 && (
+              {commentsLoading[vent.id] ? (
+                <div className="text-[#94A3B8] text-sm mt-2">Loading comments...</div>
+              ) : commentsError[vent.id] ? (
+                <div className="text-red-500 text-sm mt-2">{commentsError[vent.id]}</div>
+              ) : commentsMap[vent.id] && commentsMap[vent.id].length > 0 ? (
                 <div className="mt-4 space-y-2">
                   <div className="text-[#94A3B8] text-sm font-semibold mb-1">Comments:</div>
                   {commentsMap[vent.id].map((comment) => (
@@ -294,7 +308,7 @@ export default function VentPage() {
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
 
               {/* Comment Input */}
               {showCommentInput[vent.id] && (
@@ -305,12 +319,8 @@ export default function VentPage() {
                     if (!commentInputs[vent.id]?.trim()) return;
                     await addComment(vent.id, commentInputs[vent.id]);
                     setCommentInputs((prev) => ({ ...prev, [vent.id]: '' }));
-                    // Refresh comments for this vent
-                    const res = await fetch(`/api/comments/${vent.id}`);
-                    if (res.ok) {
-                      const comments = await res.json();
-                      setCommentsMap((prev) => ({ ...prev, [vent.id]: comments }));
-                    }
+                    // Always re-fetch comments for this vent after posting
+                    await fetchCommentsForVent(vent.id);
                   }}
                 >
                   <input
