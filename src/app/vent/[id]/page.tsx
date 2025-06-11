@@ -1,10 +1,10 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getVent } from '@/lib/store';
+import { useVentStore } from '@/lib/store';
 
 // Generate metadata for the vent
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const vent = getVent(params.id);
+  const vent = useVentStore.getState().getVent(params.id);
   
   if (!vent) {
     return {
@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 }
 
 export default function VentPage({ params }: { params: { id: string } }) {
-  const vent = getVent(params.id);
+  const vent = useVentStore.getState().getVent(params.id);
 
   if (!vent) {
     notFound();
