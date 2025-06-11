@@ -1,15 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useVentStore } from "@/lib/store";
 import { VENT_CATEGORIES, VentCategory } from "@/lib/types";
 import { ChevronDown, Filter } from "lucide-react";
 
 export default function VentsPage() {
   const vents = useVentStore((state) => state.vents);
+  const fetchVents = useVentStore((state) => state.fetchVents);
   const [category, setCategory] = useState<VentCategory | "All">("All");
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [sort, setSort] = useState<"recent" | "expiring">("recent");
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetchVents();
+  }, [fetchVents]);
+
+  useEffect(() => {
+    // Fetch comment counts for all vents
+    const fetchCounts = async () => {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        vents.map(async (vent) => {
+          const res = await fetch(`/api/comments/${vent.id}`);
+          if (res.ok) {
+            const comments = await res.json();
+            counts[vent.id] = Array.isArray(comments) ? comments.length : 0;
+          } else {
+            counts[vent.id] = 0;
+          }
+        })
+      );
+      setCommentCounts(counts);
+    };
+    if (vents.length > 0) fetchCounts();
+  }, [vents]);
 
   // Filter and sort vents
   const filteredVents = vents
@@ -96,7 +122,7 @@ export default function VentsPage() {
                 <p className="text-[#F8FAFC] whitespace-pre-wrap mb-4">{vent.content}</p>
                 <div className="flex items-center gap-6 text-[#94A3B8] text-sm">
                   <span>❤️ {vent.likes}</span>
-                  <span>💬 {vent.comments.length}</span>
+                  <span>💬 {commentCounts[vent.id] ?? 0}</span>
                 </div>
               </div>
             ))

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVentStore } from '@/lib/store';
 import { VENT_CATEGORIES, VENT_DURATIONS, VentCategory, VentDuration } from '@/lib/types';
 import { ChevronDown, Share2, Heart, MessageCircle, Link as LinkIcon, Twitter, Facebook, Linkedin } from 'lucide-react';
@@ -13,18 +13,49 @@ export default function VentPage() {
   const [isDurationOpen, setIsDurationOpen] = useState(false);
   const [showShareOptions, setShowShareOptions] = useState<string | null>(null);
   const addVent = useVentStore((state) => state.addVent);
+  const fetchVents = useVentStore((state) => state.fetchVents);
   const vents = useVentStore((state) => state.vents);
+  const [commentsMap, setCommentsMap] = useState<Record<string, any[]>>({});
+  const likeVent = useVentStore((state) => state.likeVent);
+  const addComment = useVentStore((state) => state.addComment);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [showCommentInput, setShowCommentInput] = useState<Record<string, boolean>>({});
+  const [likedVents, setLikedVents] = useState<Record<string, boolean>>({});
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchVents();
+  }, [fetchVents]);
+
+  useEffect(() => {
+    // Fetch comments for all vents
+    const fetchComments = async () => {
+      const map: Record<string, any[]> = {};
+      await Promise.all(
+        vents.map(async (vent) => {
+          const res = await fetch(`/api/comments/${vent.id}`);
+          if (res.ok) {
+            const comments = await res.json();
+            map[vent.id] = Array.isArray(comments) ? comments : [];
+          } else {
+            map[vent.id] = [];
+          }
+        })
+      );
+      setCommentsMap(map);
+    };
+    if (vents.length > 0) fetchComments();
+  }, [vents]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
 
-    addVent({
+    await addVent({
       content: content.trim(),
       category,
       duration,
     });
-
+    await fetchVents();
     setContent('');
   };
 
@@ -185,13 +216,21 @@ export default function VentPage() {
 
               <div className="flex items-center justify-between text-[#94A3B8] text-sm">
                 <div className="flex items-center gap-4">
-                  <button className="flex items-center gap-1 hover:text-[#8B5CF6] transition-colors">
+                  <button
+                    className={`flex items-center gap-1 transition-colors ${likedVents[vent.id] ? 'text-[#8B5CF6]' : 'hover:text-[#8B5CF6] text-[#94A3B8]'}`}
+                    onClick={() => {
+                      if (!likedVents[vent.id]) {
+                        likeVent(vent.id);
+                        setLikedVents((prev) => ({ ...prev, [vent.id]: true }));
+                      }
+                    }}
+                  >
                     <Heart className="w-5 h-5" />
                     <span>{vent.likes}</span>
                   </button>
-                  <button className="flex items-center gap-1 hover:text-[#8B5CF6] transition-colors">
+                  <button className="flex items-center gap-1 hover:text-[#8B5CF6] transition-colors" onClick={() => setShowCommentInput((prev) => ({ ...prev, [vent.id]: !prev[vent.id] }))}>
                     <MessageCircle className="w-5 h-5" />
-                    <span>{vent.comments.length}</span>
+                    <span>{commentsMap[vent.id]?.length ?? 0}</span>
                   </button>
                 </div>
                 <div className="relative">
@@ -243,6 +282,49 @@ export default function VentPage() {
                   )}
                 </div>
               </div>
+
+              {/* Comments Section */}
+              {commentsMap[vent.id] && commentsMap[vent.id].length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="text-[#94A3B8] text-sm font-semibold mb-1">Comments:</div>
+                  {commentsMap[vent.id].map((comment) => (
+                    <div key={comment.id} className="bg-[#1E293B]/40 rounded-lg px-4 py-2 text-[#F8FAFC] text-sm">
+                      {comment.content}
+                      <div className="text-xs text-[#94A3B8] mt-1">{new Date(comment.created_at).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Comment Input */}
+              {showCommentInput[vent.id] && (
+                <form
+                  className="flex gap-2 mt-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!commentInputs[vent.id]?.trim()) return;
+                    await addComment(vent.id, commentInputs[vent.id]);
+                    setCommentInputs((prev) => ({ ...prev, [vent.id]: '' }));
+                    // Refresh comments for this vent
+                    const res = await fetch(`/api/comments/${vent.id}`);
+                    if (res.ok) {
+                      const comments = await res.json();
+                      setCommentsMap((prev) => ({ ...prev, [vent.id]: comments }));
+                    }
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={commentInputs[vent.id] || ''}
+                    onChange={(e) => setCommentInputs((prev) => ({ ...prev, [vent.id]: e.target.value }))}
+                    placeholder="Add a comment..."
+                    className="flex-1 px-3 py-2 rounded-lg bg-[#1E293B]/40 border border-[#8B5CF6]/20 text-[#F8FAFC] focus:outline-none"
+                  />
+                  <button type="submit" className="bg-[#8B5CF6] hover:bg-[#7C3AED] text-white px-4 py-2 rounded-lg transition-colors">
+                    Post
+                  </button>
+                </form>
+              )}
             </div>
           ))}
         </div>

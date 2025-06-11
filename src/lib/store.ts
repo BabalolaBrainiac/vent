@@ -4,7 +4,8 @@ import { Vent, VentCategory, VentDuration } from './types';
 
 interface VentStore {
   vents: Vent[];
-  addVent: (vent: Omit<Vent, 'id' | 'createdAt' | 'likes' | 'comments'>) => void;
+  fetchVents: () => Promise<void>;
+  addVent: (vent: Omit<Vent, 'id' | 'createdAt' | 'likes' | 'comments'>) => Promise<void>;
   likeVent: (id: string) => void;
   addComment: (ventId: string, content: string) => void;
   getVent: (id: string) => Vent | undefined;
@@ -35,76 +36,55 @@ export const useVentStore = create<VentStore>()(
   persist(
     (set, get) => ({
       vents: [],
-      addVent: (vent) => set((state) => ({
-        vents: [
-          {
-            ...vent,
-            id: Math.random().toString(36).substring(7),
-            createdAt: new Date().toISOString(),
-            likes: 0,
-            comments: [],
-          },
-          ...state.vents,
-        ],
-      })),
-      likeVent: (id) => {
-        set((state) => ({
-          vents: state.vents.map((vent) =>
-            vent.id === id ? { ...vent, likes: vent.likes + 1 } : vent
-          ),
-        }));
+      fetchVents: async () => {
+        const res = await fetch('/api/vents');
+        if (res.ok) {
+          let data = await res.json();
+          data = data.map((v: any) => ({
+            ...v,
+            createdAt: v.created_at,
+          }));
+          set({ vents: data });
+        }
       },
-      addComment: (ventId, content) => set((state) => ({
-        vents: state.vents.map((vent) =>
-          vent.id === ventId
-            ? {
-                ...vent,
-                comments: [
-                  ...vent.comments,
-                  {
-                    id: Math.random().toString(36).substring(7),
-                    content,
-                    createdAt: new Date().toISOString(),
-                  },
-                ],
-              }
-            : vent
-        ),
-      })),
+      addVent: async (vent) => {
+        const res = await fetch('/api/vents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vent),
+        });
+        if (res.ok) {
+          const newVent = await res.json();
+          set((state) => ({ vents: [newVent, ...state.vents] }));
+        }
+      },
+      likeVent: async (id) => {
+        // Find the vent
+        const vent = get().vents.find(v => v.id === id);
+        if (!vent) return;
+        // Increment likes in Supabase
+        const res = await fetch(`/api/vents/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ likes: vent.likes + 1 }),
+        });
+        if (res.ok) {
+          // Refresh vents
+          await get().fetchVents();
+        }
+      },
+      addComment: async (ventId, content) => {
+        await fetch('/api/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vent_id: ventId, content }),
+        });
+        // No need to update store here, handled in UI
+      },
       getVent: (id) => get().vents.find(vent => vent.id === id),
-      addReaction: (ventId) => set((state) => ({
-        vents: state.vents.map((vent) =>
-          vent.id === ventId ? { ...vent, likes: vent.likes + 1 } : vent
-        ),
-      })),
-      addCommentReaction: (ventId, commentId, type) => {
-        set((state) => ({
-          vents: state.vents.map((vent) =>
-            vent.id === ventId
-              ? {
-                  ...vent,
-                  comments: vent.comments.map((comment) =>
-                    comment.id === commentId
-                      ? {
-                          ...comment,
-                          reactions: {
-                            ...comment.reactions,
-                            [type]: comment.reactions[type] + 1,
-                          },
-                        }
-                      : comment
-                  ),
-                }
-              : vent
-          ),
-        }));
-      },
-      cleanupExpiredVents: () => {
-        const now = new Date();
-        set((state) => ({
-          vents: state.vents.filter((vent) => vent.expiresAt > now),
-        }));
-      },
+      addReaction: (ventId) => {}, // To be implemented with API
+      addCommentReaction: (ventId, commentId, type) => {}, // To be implemented with API
+      cleanupExpiredVents: () => {}, // Not needed with persistent backend
     }),
     {
       name: 'vent-storage',
