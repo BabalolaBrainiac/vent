@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import {supabase} from '@/lib/supabase';
+import {NextRequest, NextResponse} from 'next/server';
 
 // GET: Fetch all vents
 export async function GET() {
@@ -7,6 +7,10 @@ export async function GET() {
     .from('vents')
     .select('*')
     .order('created_at', { ascending: false });
+
+  if(!data) {
+    console.info("data could not be fetched for vents");
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
